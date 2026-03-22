@@ -56,6 +56,23 @@ Same syntax as `-l`, one spec per line. Lines whose first token is not an intege
 xyzrender sn2.out --ts --label sn2_label.txt --label-size 40
 ```
 
+## Stereochemistry (`--stereo`)
+
+Add stereochemistry labels derived from 3D geometry (via [xyzgraph](https://github.com/aligfellow/xyzgraph)). Detects R/S point chirality, E/Z double bonds, axial, planar (metallocene and CIP), and helical chirality.
+
+| Isothiocyanate (R/S, E/Z, planar) | TS with stereo (Mn-H₂) |
+|---|---|
+| ![isothio stereo](../../../examples/images/isothio_stereo.svg) | ![mn-h2 ts stereo](../../../examples/images/mn-h2_ts_stereo.svg) |
+
+```bash
+xyzrender isothio_xtb.xyz -c 1 --stereo
+xyzrender mn-h2.log --ts --stereo --no-orient
+```
+
+Two display modes for R/S labels: `--stereo` (default, centered on atom) and `--stereo label` (offset like other annotations).
+
+> **Note:** `--stereo` with `--idx` will overlap labels on stereocenters since both draw text at the atom position. Use `--stereo label` to offset R/S labels if combining with `--idx`.
+
 ## Atom property colormap (`--cmap`)
 
 Color atoms by a per-atom scalar value (e.g. partial charges) using a Viridis-like colormap.

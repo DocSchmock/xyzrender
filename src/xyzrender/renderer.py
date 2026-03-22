@@ -1289,7 +1289,7 @@ def _annotations_svg(
     radii: np.ndarray,
 ) -> list[str]:
     """Render all annotation elements as a flat list of SVG strings."""
-    from xyzrender.annotations import AngleLabel, AtomValueLabel, BondLabel, DihedralLabel
+    from xyzrender.annotations import AngleLabel, AtomValueLabel, BondLabel, CentroidLabel, DihedralLabel
 
     svg: list[str] = []
     col = cfg.label_color
@@ -1299,7 +1299,12 @@ def _annotations_svg(
     for ann in cfg.annotations:
         if isinstance(ann, AtomValueLabel):
             xi, yi = _proj(pos[ann.index], scale, cx, cy, canvas_w, canvas_h)
-            svg.append(_text_svg(xi, yi + fs * cfg.label_offset, ann.text, fs, col))
+            if ann.on_atom:
+                # NB: overlaps with --idx labels which also render at (xi, yi);
+                # use on_atom=False (--stereo label) when combining with --idx.
+                svg.append(_text_svg(xi, yi, ann.text, fs, col))
+            else:
+                svg.append(_text_svg(xi, yi + fs * cfg.label_offset, ann.text, fs, col))
 
         elif isinstance(ann, BondLabel):
             mi = (pos[ann.i] + pos[ann.j]) / 2
@@ -1392,6 +1397,11 @@ def _annotations_svg(
             else:
                 dpx, dpy = 0.0, -doff
             svg.append(_text_svg(mx + dpx, my + dpy, ann.text, fs, col))
+
+        elif isinstance(ann, CentroidLabel):
+            centroid = pos[list(ann.atoms)].mean(axis=0)
+            cx2, cy2 = _proj(centroid, scale, cx, cy, canvas_w, canvas_h)
+            svg.append(_text_svg(cx2, cy2, ann.text, fs, col))
 
     return svg
 
