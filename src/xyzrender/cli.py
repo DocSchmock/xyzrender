@@ -7,17 +7,6 @@ import logging
 import sys
 from pathlib import Path
 
-from xyzrender.api import (
-    Molecule,
-    load,
-    orient,
-    render,
-    render_gif,
-)
-from xyzrender.config import build_config
-from xyzrender.hull import apply_hull_to_config
-from xyzrender.readers import load_stdin
-
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_EXTENSIONS = {"svg", "png", "pdf"}
@@ -530,7 +519,22 @@ def main() -> None:
     )
 
     args = p.parse_args()
+
+    from_stdin = not args.input and not sys.stdin.isatty()
+    if not Path(args.input).is_file() and not args.smi and not from_stdin:
+        p.error(f"No such file or directory: {args.input!r}")
+
     from xyzrender import configure_logging
+    from xyzrender.api import (
+        Molecule,
+        load,
+        orient,
+        render,
+        render_gif,
+    )
+    from xyzrender.config import build_config
+    from xyzrender.hull import apply_hull_to_config
+    from xyzrender.readers import load_stdin
 
     configure_logging(verbose=True, debug=args.debug)
 
