@@ -381,7 +381,9 @@ class RenderConfig:
     padding: float = 20.0
     atom_scale: float = 1.0
     atom_stroke_width: float = 1.5
-    atom_stroke_color: str = "black"
+    atom_stroke_color: str = "black"  # "atom" = use per-atom element color
+    atom_wash: float = 0.0  # blend atom fill toward white (0=none, 0.78=graph-style tint)
+    atoms_above_bonds: bool = False  # draw atoms after all bonds for diagram aesthetic
     bond_width: float = 5.0
     bond_color: str = "#333333"
     ts_color: str | None = None  # dashed TS bonds; None -> use bond_color
