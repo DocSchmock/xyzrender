@@ -11,7 +11,7 @@ from xyzgraph import DATA
 
 from xyzrender.cmap import atom_colors as cmap_atom_colors
 from xyzrender.cmap import colorbar_extra_width, colorbar_svg
-from xyzrender.colors import _FOG_NEAR, WHITE, blend_fog, get_color, get_gradient_colors
+from xyzrender.colors import _FOG_NEAR, WHITE, Color, blend_fog, get_color, get_gradient_colors, resolve_color
 from xyzrender.dens import dens_layers_svg
 from xyzrender.hull import (
     get_convex_hull_edges_silhouette,
@@ -24,7 +24,7 @@ from xyzrender.mo import (
     mo_back_lobes_svg,
     mo_front_lobes_svg,
 )
-from xyzrender.types import BondStyle, Color, RenderConfig, resolve_color
+from xyzrender.types import BondStyle, RenderConfig
 from xyzrender.utils import pca_orient
 
 logger = logging.getLogger(__name__)

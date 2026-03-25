@@ -7,13 +7,13 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 
+from xyzrender.colors import resolve_color
 from xyzrender.types import (
     DensParams,
     ESPParams,
     MOParams,
     NCIParams,
     RenderConfig,
-    resolve_color,
 )
 
 logger = logging.getLogger(__name__)
