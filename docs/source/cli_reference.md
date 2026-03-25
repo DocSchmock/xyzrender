@@ -65,6 +65,7 @@ Full flag reference for `xyzrender`. See also `xyzrender --help`.
 |------|-------------|
 | `-I`, `--interactive` | Interactive rotation via `v` viewer |
 | `--orient` / `--no-orient` | Auto-orientation toggle |
+| `--ref [FILE]` | Save/load orientation reference (`reference.xyz` by default) |
 
 ## TS / NCI
 

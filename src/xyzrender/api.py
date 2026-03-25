@@ -448,6 +448,7 @@ def render(
     no_hy: bool = False,
     bo: bool | None = None,
     orient: bool | None = None,
+    ref: str | os.PathLike | None = None,
     # --- Crystal display (when mol has cell_data) ---
     no_cell: bool = False,
     axes: bool = True,
@@ -536,6 +537,12 @@ def render(
         ``True`` / ``False`` to force / suppress PCA auto-orientation.
         ``None`` (default) enables auto-orientation, unless the molecule was
         manually oriented via :func:`orient`.
+    ref:
+        Path to an orientation reference XYZ file.  If the file exists,
+        the molecule is Kabsch-aligned to it and PCA auto-orientation is
+        disabled regardless of *orient*.  If the file does not exist,
+        current (possibly PCA-oriented) positions are saved to it.
+        Not supported for periodic structures (raises ``ValueError``).
     ts_bonds, nci_bonds:
         Manual TS / NCI bond overlays as 1-indexed atom pairs.
     vdw:
@@ -731,6 +738,16 @@ def render(
         cell_data=copy.deepcopy(mol.cell_data) if mol.cell_data is not None else None,
         oriented=mol.oriented,
     )
+
+    # --- Orientation reference ---
+    if ref is not None:
+        ref_path = Path(ref)
+        if ref_path.is_file():
+            if mol.oriented:
+                logger.warning("ref overrides interactive orientation (ref file %s exists)", ref_path)
+            _apply_ref_orientation(rmol, ref_path, cfg)
+        else:
+            _apply_and_save_ref(rmol, cfg, ref_path)
 
     # --- Ensemble: build merged graph lazily (z_nudge=True for static renders) ---
     # mol.graph holds only the reference frame; conformer data lives in mol.ensemble.
@@ -987,6 +1004,7 @@ def render_gif(
     no_hy: bool = False,
     bo: bool | None = None,
     orient: bool | None = None,
+    ref: str | os.PathLike | None = None,
     # --- Molecule color ---
     mol_color: str | None = None,
     # --- Highlight ---
@@ -1305,6 +1323,16 @@ def render_gif(
             # Deep-copy so render_rotation_gif (which mutates positions in-place) doesn't
             # corrupt the caller's Molecule, and so _apply_cell_config can add ghost atoms.
             ref_graph = copy.deepcopy(ref_graph)
+
+        # --- Orientation reference (gif_rot only) ---
+        if ref is not None:
+            _ref_path = Path(ref)
+            _ref_mol = Molecule(graph=ref_graph)
+            if _ref_path.is_file():
+                _apply_ref_orientation(_ref_mol, _ref_path, cfg)
+            else:
+                _apply_and_save_ref(_ref_mol, cfg, _ref_path)
+            ref_graph = _ref_mol.graph
 
         # --- Ensemble: build scratch merged graph (z_nudge=False — meaningless for rotation) ---
         if isinstance(molecule, Molecule) and molecule.ensemble is not None:
@@ -1850,6 +1878,58 @@ def _combine_vector_sources(
                     width=cfg.bond_width * 1.1,
                 )
             )
+
+
+def _apply_ref_orientation(rmol: Molecule, ref_path: Path, cfg: "RenderConfig") -> None:
+    """Kabsch-align *rmol* onto a saved reference XYZ.  Force-disables auto_orient."""
+    if rmol.cell_data is not None:
+        msg = "--ref is not supported for periodic structures"
+        raise ValueError(msg)
+
+    ref_mol = load(ref_path, quick=True)
+
+    # Non-ghost atoms only
+    ref_nodes = [n for n in ref_mol.graph.nodes() if ref_mol.graph.nodes[n]["symbol"] != "*"]
+    mol_nodes = [n for n in rmol.graph.nodes() if rmol.graph.nodes[n]["symbol"] != "*"]
+
+    if len(ref_nodes) != len(mol_nodes):
+        msg = f"--ref: atom count mismatch (reference {len(ref_nodes)}, molecule {len(mol_nodes)})"
+        raise ValueError(msg)
+
+    ref_pos = np.array([ref_mol.graph.nodes[n]["position"] for n in ref_nodes], dtype=float)
+    mol_pos = np.array([rmol.graph.nodes[n]["position"] for n in mol_nodes], dtype=float)
+
+    from xyzrender.utils import kabsch_align
+
+    aligned = kabsch_align(ref_pos, mol_pos)
+    for k, nid in enumerate(mol_nodes):
+        rmol.graph.nodes[nid]["position"] = tuple(float(v) for v in aligned[k])
+
+    # Reference IS the orientation — --orient ignored
+    cfg.auto_orient = False
+
+
+def _apply_and_save_ref(rmol: Molecule, cfg: "RenderConfig", ref_path: Path) -> None:
+    """Orient graph positions (PCA or already done by -I), then dump to XYZ.
+
+    Here we PCA graph nodes for the saved file to match the rendered view.
+    With -I, auto_orient is already False — this is just a dump.
+    """
+    if rmol.cell_data is not None:
+        msg = "--ref is not supported for periodic structures"
+        raise ValueError(msg)
+
+    if cfg.auto_orient and rmol.graph.number_of_nodes() > 1:
+        from xyzrender.utils import pca_orient
+
+        nodes = list(rmol.graph.nodes())
+        pos = np.array([rmol.graph.nodes[n]["position"] for n in nodes], dtype=float)
+        pos = pca_orient(pos)
+        for k, nid in enumerate(nodes):
+            rmol.graph.nodes[nid]["position"] = tuple(pos[k].tolist())
+
+    cfg.auto_orient = False
+    rmol.to_xyz(ref_path, title="xyzrender orientation reference")
 
 
 def _apply_cell_config(

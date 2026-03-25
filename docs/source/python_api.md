@@ -191,6 +191,20 @@ render(mol)        # renders in the manually chosen orientation
 
 Requires `pip install xyzrender[v]` (Linux only).
 
+## Orientation reference
+
+Use `ref=` to save or load a reference orientation for consistent batch rendering:
+
+```python
+mol1 = load("homo.cube")
+render(mol1, mo=True, ref="reference.xyz")   # first call saves oriented positions
+
+mol2 = load("lumo.cube")
+render(mol2, mo=True, ref="reference.xyz")   # subsequent calls Kabsch-align to the reference
+```
+
+When the reference file exists, `orient=True` is ignored — the reference is the orientation.
+
 ## GIF animations
 
 ```python

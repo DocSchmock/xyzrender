@@ -22,6 +22,50 @@ and close the window with `q` or `esc`.
 xyzrender molecule.xyz -I
 ```
 
+## Orientation reference (`--ref`)
+
+The `--ref` flag saves or loads a reference orientation for consistent rendering across multiple files (e.g. a batch of MO cube files).
+
+**First render** — file does not exist yet, PCA-oriented positions are saved:
+```bash
+xyzrender homo.cube --mo --ref              # saves reference.xyz
+xyzrender homo.cube --mo --ref custom.xyz   # saves custom.xyz
+```
+
+**Subsequent renders** — file exists, molecule is Kabsch-aligned to it:
+```bash
+xyzrender lumo.cube --mo --ref              # loads reference.xyz, same orientation
+xyzrender lumo.cube --mo --ref custom.xyz   # loads custom.xyz
+```
+
+When loading an existing reference, `--orient` is ignored — the reference file IS the orientation.
+
+### Combined with `-I`
+
+Orient interactively once, then reuse:
+```bash
+xyzrender homo.cube --mo -I --ref           # orient in viewer, save
+xyzrender lumo.cube --mo --ref              # load, same orientation
+```
+
+If the reference file already exists, `-I` is skipped (the viewer is not opened).
+
+### Python API
+
+```python
+from xyzrender import render, load
+
+mol1 = load("homo.cube")
+render(mol1, mo=True, ref="reference.xyz")   # save
+
+mol2 = load("lumo.cube")
+render(mol2, mo=True, ref="reference.xyz")   # load, same orientation
+```
+
+```{note}
+`--ref` is not supported for periodic structures (inputs loaded with `cell=True` or crystal formats). Use `-I` for interactive orientation of crystals.
+```
+
 ## Piping from v
 
 We can also pipe from `v` (or `vmol`) directly when working with `.xyz` files:
