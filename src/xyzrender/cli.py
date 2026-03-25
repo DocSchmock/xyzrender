@@ -246,6 +246,14 @@ def main() -> None:
         "--orient", action=argparse.BooleanOptionalAction, default=None, help="Auto-orientation (default: on)"
     )
     orient_g.add_argument("-I", "--interactive", action="store_true", help="Open in v viewer for interactive rotation")
+    orient_g.add_argument(
+        "--ref",
+        nargs="?",
+        const="reference.xyz",
+        default=None,
+        metavar="FILE",
+        help="Save/load orientation reference for consistent rendering",
+    )
 
     # --- TS / NCI ---
     ts_g = p.add_argument_group("transition state / NCI")
@@ -835,9 +843,15 @@ def main() -> None:
 
     # --- Interactive viewer (operates on the reference frame only) ---
     if args.interactive:
-        orient(mol)
-        if not mol.oriented:
-            sys.exit(1)
+        if args.ref is not None and Path(args.ref).is_file():
+            logger.warning(
+                "--ref %s already exists — skipping interactive viewer (reference orientation will be used)",
+                args.ref,
+            )
+        else:
+            orient(mol)
+            if not mol.oriented:
+                sys.exit(1)
 
     # --- Ensemble: load all frames, align onto (possibly oriented) reference ---
     if args.ensemble:
@@ -908,6 +922,7 @@ def main() -> None:
             vector_scale=args.vector_scale,
             bo=args.bo,
             output=args.output,
+            ref=args.ref,
         )
     except ValueError as e:
         p.error(str(e))
@@ -976,6 +991,7 @@ def main() -> None:
                 ghost_opacity=args.ghost_opacity,
                 vector=args.vector,
                 vector_scale=args.vector_scale,
+                ref=args.ref,
             )
         except ValueError as e:
             p.error(str(e))
