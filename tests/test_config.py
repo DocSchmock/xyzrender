@@ -24,6 +24,13 @@ def test_paton_preset_has_no_bond_orders():
     assert cfg.bond_orders is False
 
 
+def test_pmol_preset_enables_element_colored_bonds():
+    cfg = build_config("pmol")
+    assert cfg.bond_color_by_element is True
+    assert cfg.bond_gradient is True
+    assert cfg.bond_orders is False
+
+
 def test_graph_preset_config():
     cfg = build_config("graph")
     assert cfg.atom_stroke_color == "atom"

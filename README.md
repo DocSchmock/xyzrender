@@ -52,12 +52,16 @@ See web app by [@BNNLab](https://github.com/bnnlab) [**xyzrender-web.streamlit.a
 
 ```bash
 pip install xyzrender
+# latest development version:
+pip install --upgrade git+https://github.com/aligfellow/xyzrender.git
 ```
 
 Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv tool install xyzrender
+# latest development version:
+uv tool install git+https://github.com/aligfellow/xyzrender.git
 ```
 
 To test without installing, you can use [uvx](https://docs.astral.sh/uv/guides/tools/#running-tools)
@@ -88,6 +92,7 @@ xyzrender caffeine.xyz                                    # render XYZ → SVG
 xyzrender calc.out                                        # QM output (ORCA, Gaussian, etc.)
 xyzrender caffeine.xyz -o render.png                      # explicit output path/format
 xyzrender caffeine.xyz --config paton --hy -o styled.svg  # preset + show hydrogens
+xyzrender caffeine.xyz --config pmol --hy -o pmol.svg     # ball-and-stick + element-coloured bonds
 xyzrender caffeine.xyz --config graph -o graph.svg        # minimalist graph-style rendering
 xyzrender sn2.out --ts --hy -o ts.svg                     # auto-detect TS bonds
 xyzrender caffeine.xyz --gif-rot -go caffeine.gif         # rotation GIF
@@ -112,9 +117,9 @@ For the full Python API (render options, `build_config()`, `measure()`, `load()`
 
 ### Presets
 
-| Default | Flat | Paton (pymol-like) | Skeletal | 
-|---------|------|--------------------|----------|
-| ![default](examples/images/caffeine_default.svg) | ![flat](examples/images/caffeine_flat.svg) | ![paton](examples/images/caffeine_paton.svg) | ![skeletal](examples/images/caffeine_skeletal.svg) | 
+| Default | Flat | Paton (PyMOL-like) | Pmol | Skeletal |
+|---------|------|--------------------|------|----------|
+| ![default](examples/images/caffeine_default.svg) | ![flat](examples/images/caffeine_flat.svg) | ![paton](examples/images/caffeine_paton.svg) | ![pmol](examples/images/caffeine_pmol.svg) | ![skeletal](examples/images/caffeine_skeletal.svg) |
 
 | Bubble | Tube | Wire | Graph |
 |--------|------|------|-------|
