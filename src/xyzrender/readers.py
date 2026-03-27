@@ -26,6 +26,113 @@ if TYPE_CHECKING:
 
 _Atoms: TypeAlias = list[tuple[str, tuple[float, float, float]]]
 
+# Extensions recognised as QM *input* files (dispatched to inputs.py, not cclib).
+_INPUT_EXTS = frozenset({".com", ".gjf", ".inp", ".nw", ".nwi", ".in", ".mop", ".coord", ".fdf", ".abi"})
+
+
+def _is_vasp_file(path: str) -> bool:
+    """Check if *path* is a VASP POSCAR/CONTCAR file."""
+    p = Path(path)
+    return p.suffix.lower() == ".vasp" or p.stem.upper() in {"POSCAR", "CONTCAR"}
+
+
+def _build_crystal_graph(atoms: list, lattice, *, charge: int = 0, multiplicity=None, kekule: bool = False) -> tuple:
+    """Build graph + CellData from atoms and lattice (shared by periodic parsers)."""
+    graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, quick=True)
+    graph.graph["lattice"] = lattice
+    graph.graph["lattice_origin"] = np.zeros(3)
+    return graph, CellData(lattice=lattice)
+
+
+def _load_qm_input(
+    path: str,
+    *,
+    charge: int = 0,
+    multiplicity=None,
+    kekule: bool = False,
+    quick: bool = False,
+    bohr: bool | None = None,
+) -> tuple:
+    """Load a QM input file, detecting periodic formats automatically.
+
+    Dispatch order (extension-first to avoid unnecessary file reads):
+
+    1. **Unambiguous extensions** — skip straight to the right parser:
+       ``.fdf`` → SIESTA, ``.abi`` → ABINIT, ``.com``/``.gjf``/``.nw``/… → generic sniffer
+    2. **Ambiguous extensions** (``.in``, ``.inp``) — content-sniff to detect
+       QE / SIESTA / ABINIT / CP2K, then fall back to generic sniffer.
+    """
+    from xyzrender.inputs import (
+        parse_abinit_input,
+        parse_cp2k_cell,
+        parse_qe_input,
+        parse_qm_input,
+        parse_siesta_fdf,
+    )
+
+    p = path
+    ext = Path(p).suffix.lower()
+    # --- Detect periodic format from extension + first ~50 lines (single read) ---
+    _ext_hints = {".fdf": "siesta", ".abi": "abinit"}
+    detected = _ext_hints.get(ext)
+
+    if detected is None:
+        # Content-sniff: read first ~50 lines once, check leading tokens
+        with open(p) as f:
+            head = [f.readline() for _ in range(50)]
+        # Collect first token and all tokens per line (comments stripped)
+        first_tokens = set()
+        all_tokens = set()
+        for line in head:
+            stripped = line.split("#")[0].split("!")[0].strip().lower()
+            if stripped:
+                parts = stripped.split()
+                first_tokens.add(parts[0])
+                all_tokens.update(parts)
+
+        if first_tokens & {"&system", "&control", "atomic_positions", "cell_parameters"}:
+            detected = "qe"
+        elif all_tokens & {"chemicalspecieslabel", "atomiccoordinatesandatomicspecies"}:
+            detected = "siesta"
+        elif "znucl" in first_tokens and first_tokens & {"natom", "xred", "xcart", "xangst"}:
+            detected = "abinit"
+        elif first_tokens & {"&force_eval", "&cell", "&coord"}:
+            detected = "cp2k"
+
+    # --- Try detected periodic parser (fall through to generic sniffer on failure) ---
+    if detected is not None:
+        try:
+            if detected == "qe":
+                atoms, lattice, file_charge = parse_qe_input(p)
+                c = charge if charge != 0 else file_charge
+                return _build_crystal_graph(atoms, lattice, charge=c, multiplicity=multiplicity, kekule=kekule)
+            elif detected == "siesta":
+                atoms, lattice = parse_siesta_fdf(p)
+                return _build_crystal_graph(atoms, lattice, charge=charge, multiplicity=multiplicity, kekule=kekule)
+            elif detected == "abinit":
+                atoms, lattice = parse_abinit_input(p)
+                return _build_crystal_graph(atoms, lattice, charge=charge, multiplicity=multiplicity, kekule=kekule)
+        except (ValueError, IndexError, KeyError):
+            logger.debug("%s parser failed on %s, falling back to generic sniffer", detected, p)
+
+    # --- Generic sniffer (Gaussian, ORCA, NWChem, Q-Chem, Psi4, etc.) ---
+    atoms, file_charge, file_mult = parse_qm_input(p, bohr=bohr)
+    c = charge if charge != 0 else file_charge
+    m = multiplicity if multiplicity is not None else file_mult
+    graph = build_graph(atoms, charge=c, multiplicity=m, kekule=kekule, quick=quick)
+    crystal = None
+
+    # CP2K: coords already extracted by sniffer; check for a cell block too
+    if detected == "cp2k":
+        _cell = parse_cp2k_cell(p)
+        if _cell is not None:
+            graph.graph["lattice"] = _cell
+            graph.graph["lattice_origin"] = np.zeros(3)
+            crystal = CellData(lattice=_cell)
+
+    return graph, crystal
+
+
 # ---------------------------------------------------------------------------
 # Public readers
 # ---------------------------------------------------------------------------
@@ -39,6 +146,7 @@ def load_molecule(
     kekule: bool = False,
     rebuild: bool = False,
     quick: bool = False,
+    bohr: bool | None = None,
 ) -> tuple[nx.Graph, CellData | None]:
     """Read a molecular structure file and build a graph.
 
@@ -85,11 +193,27 @@ def load_molecule(
     if p.endswith(".cube"):
         graph, _cube = load_cube(p, charge=charge, multiplicity=multiplicity, kekule=kekule, quick=quick)
     elif p.endswith(".xyz"):
-        graph = build_graph(read_xyz_file(p), charge=charge, multiplicity=multiplicity, kekule=kekule, quick=quick)
+        # Parse charge/mult from extXYZ comment line as defaults
+        _xyz_charge, _xyz_mult = charge, multiplicity
         try:
             with open(p) as _f:
                 _f.readline()
                 _comment = _f.readline()
+            _fc, _fm = _parse_extxyz_charge_mult(_comment)
+            if _xyz_charge == 0 and _fc is not None:
+                _xyz_charge = _fc
+            if _xyz_mult is None and _fm is not None:
+                _xyz_mult = _fm
+        except OSError:
+            _comment = ""
+        graph = build_graph(
+            read_xyz_file(p),
+            charge=_xyz_charge,
+            multiplicity=_xyz_mult,
+            kekule=kekule,
+            quick=quick,
+        )
+        try:
             _lattice = _parse_extxyz_lattice(_comment)
             if _lattice is not None:
                 graph.graph["lattice"] = _lattice
@@ -145,8 +269,26 @@ def load_molecule(
         graph = build_graph(data.atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, quick=True)
         assert data.pbc_cell is not None
         crystal = CellData(lattice=data.pbc_cell)
+    elif _is_vasp_file(p):
+        from xyzrender.inputs import parse_poscar
+
+        atoms, lattice = parse_poscar(p)
+        graph = build_graph(atoms, charge=charge, multiplicity=multiplicity, kekule=kekule, quick=True)
+        graph.graph["lattice"] = lattice
+        graph.graph["lattice_origin"] = np.zeros(3)
+        crystal = CellData(lattice=lattice)
+    elif p.endswith(tuple(_INPUT_EXTS)):
+        graph, crystal = _load_qm_input(
+            p, charge=charge, multiplicity=multiplicity, kekule=kekule, quick=quick, bohr=bohr
+        )
     else:
-        atoms, file_charge, file_mult = _parse_qm_output(p)
+        # Unknown extension: try cclib (output parser), then generic sniffer as fallback
+        try:
+            atoms, file_charge, file_mult = _parse_qm_output(p)
+        except (ValueError, AttributeError, ImportError):
+            from xyzrender.inputs import parse_qm_input
+
+            atoms, file_charge, file_mult = parse_qm_input(p)
         c = charge if charge != 0 else file_charge
         m = multiplicity if multiplicity is not None else file_mult
         graph = build_graph(atoms, charge=c, multiplicity=m, kekule=kekule, quick=quick)
@@ -419,7 +561,16 @@ def load_stdin(charge: int = 0, multiplicity: int | None = None, kekule: bool = 
     networkx.Graph
         Molecular graph.
     """
-    return build_graph(_parse_auto(sys.stdin.read()), charge=charge, multiplicity=multiplicity, kekule=kekule)
+    text = sys.stdin.read()
+    atoms = _parse_auto(text)
+    # Try to extract charge/mult from piped text (user flags take priority)
+    from xyzrender.inputs import _get_charge_mult
+
+    lines = text.splitlines()
+    fc, fm = _get_charge_mult(lines, 0)
+    c = charge if charge != 0 else fc
+    m = multiplicity if multiplicity is not None else fm
+    return build_graph(atoms, charge=c, multiplicity=m, kekule=kekule)
 
 
 def _parse_auto(text: str) -> list[tuple[str, tuple[float, float, float]]]:
@@ -478,6 +629,9 @@ def _parse_qm_output(path: str) -> tuple[_Atoms, int, int | None]:
 
     logging.getLogger("cclib").setLevel(logging.CRITICAL)
     parser = cclib.io.ccopen(path, loglevel=logging.CRITICAL)
+    if parser is None:
+        msg = f"cclib could not identify the file type of {path}"
+        raise ValueError(msg)
     try:
         data = parser.parse()
     except Exception as e:
@@ -583,6 +737,28 @@ def _parse_extxyz_origin(comment: str) -> np.ndarray | None:
     return np.array(vals, dtype=float)
 
 
+def _parse_extxyz_charge_mult(comment: str) -> tuple[int | None, int | None]:
+    """Extract charge and multiplicity from an extXYZ comment line.
+
+    Recognises common key aliases (case-insensitive):
+    ``charge``, ``c``, ``crg`` for charge;
+    ``mult``, ``multiplicity``, ``m`` for multiplicity.
+    """
+    charge: int | None = None
+    mult: int | None = None
+    for key in ("charge", "crg", "c"):
+        m = re.search(rf'\b{key}\s*=\s*"?(-?\d+)"?', comment, re.IGNORECASE)
+        if m:
+            charge = int(m.group(1))
+            break
+    for key in ("multiplicity", "mult", "m"):
+        m = re.search(rf'\b{key}\s*=\s*"?(\d+)"?', comment, re.IGNORECASE)
+        if m:
+            mult = int(m.group(1))
+            break
+    return charge, mult
+
+
 def _load_qm_frames(path: str) -> list[dict]:
     """Extract all optimization steps from QM output via cclib."""
     try:
@@ -593,6 +769,9 @@ def _load_qm_frames(path: str) -> list[dict]:
 
     logging.getLogger("cclib").setLevel(logging.CRITICAL)
     parser = cclib.io.ccopen(path, loglevel=logging.CRITICAL)
+    if parser is None:
+        msg = f"cclib could not identify the file type of {path}"
+        raise ValueError(msg)
     try:
         data = parser.parse()
     except Exception as e:

@@ -58,10 +58,16 @@ def main() -> None:
 
     # --- Input / Output ---
     io_g = p.add_argument_group("input/output")
-    io_g.add_argument("input", nargs="?", help="Input file (.xyz, .mol, .sdf, .mol2, .pdb, .smi, .cif, .cube, …)")
+    io_g.add_argument(
+        "input",
+        nargs="?",
+        help="Input file (.xyz, .mol, .sdf, .mol2, .pdb, .smi, .cif, .cube, "
+        ".com, .gjf, .inp, .nw, .vasp, POSCAR, .in, …)",
+    )
     io_g.add_argument("-o", "--output", help="Output file (.svg, .png, .pdf)")
     io_g.add_argument("-c", "--charge", type=int, default=0)
     io_g.add_argument("-m", "--multiplicity", type=int, default=None)
+    io_g.add_argument("--bohr", action="store_true", default=False, help="Input coordinates are in Bohr")
     io_g.add_argument("-d", "--debug", action="store_true", help="Debug output")
     io_g.add_argument(
         "--smi",
@@ -496,40 +502,26 @@ def main() -> None:
     # --- Crystal / periodic structures ---
     crystal_g = p.add_argument_group("crystal / periodic structures")
     crystal_g.add_argument(
-        "--crystal",
-        nargs="?",
-        const="auto",
-        default=None,
-        metavar="{vasp,qe}",
-        help=(
-            "Load as a periodic crystal structure via phonopy (requires xyzrender[crystal]). "
-            "Enables unit cell box, crystallographic axes (a/b/c), and image atoms. "
-            "Optionally specify the phonopy interface: vasp, qe (auto-detected from filename "
-            "if omitted). Examples: --crystal, --crystal vasp, --crystal qe"
-        ),
-    )
-    crystal_g.add_argument(
         "--cell",
         action="store_true",
         default=False,
         help=(
             "Draw the unit cell box from an extXYZ Lattice= header. "
-            "No crystallographic axes or image atoms — just the box. "
-            "Does not require phonopy."
+            "No crystallographic axes or image atoms — just the box."
         ),
     )
-    crystal_g.add_argument("--no-cell", action="store_true", default=False, help="Hide the unit cell box (--crystal)")
+    crystal_g.add_argument("--no-cell", action="store_true", default=False, help="Hide the unit cell box")
     crystal_g.add_argument(
         "--ghosts",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Show/hide periodic image atoms (default: on when --cell/--crystal, off otherwise)",
+        help="Show/hide periodic image atoms (default: on when --cell, off otherwise)",
     )
     crystal_g.add_argument(
         "--axes",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Show/hide crystallographic axis arrows a/b/c (--crystal)",
+        help="Show/hide crystallographic axis arrows a/b/c",
     )
     crystal_g.add_argument("--cell-color", default=None, help="Unit cell box color (hex or named, default: #333333)")
     crystal_g.add_argument("--cell-width", type=float, default=None, help="Unit cell box line width (default: 1.5)")
@@ -545,7 +537,7 @@ def main() -> None:
         metavar="HKL",
         help=(
             "Orient crystal looking down a crystallographic direction, e.g. --axis 111. "
-            "Each digit is one Miller index (0-9). Requires --crystal or --cell."
+            "Each digit is one Miller index (0-9). Requires --cell."
         ),
     )
     crystal_g.add_argument(
@@ -554,7 +546,7 @@ def main() -> None:
         type=int,
         default=(1, 1, 1),
         metavar=("M", "N", "L"),
-        help="Repeat the unit cell M N L times along a, b, c (requires --crystal). Default: 1 1 1.",
+        help="Repeat the unit cell M N L times along a, b, c. Default: 1 1 1.",
     )
 
     args = p.parse_args()
@@ -705,22 +697,6 @@ def main() -> None:
     if args.rebuild and args.smi:
         logger.warning("--rebuild has no effect on SMILES input (rdkit bonds are always used)")
 
-    # --crystal: interface_mode is non-None iff phonopy crystal loading is requested.
-    # Auto-detection (stem/extension) is handled inside load() → _resolve_crystal_interface().
-    # --cell is a separate lighter path: extXYZ box only, no phonopy, no image atoms.
-    interface_mode: str | None = None
-    if args.crystal is not None:
-        if args.input is None:
-            p.error("--crystal requires an input file")
-        # Resolve now so we know interface_mode for axes/ghosts defaulting below.
-        # load() will call _resolve_crystal_interface() again; ValueError → p.error().
-        from xyzrender.api import _resolve_crystal_interface
-
-        try:
-            interface_mode = _resolve_crystal_interface(Path(args.input), args.crystal)
-        except ValueError as e:
-            p.error(str(e))
-
     # Supercell repetition counts (validated fully after loading so we can
     # ensure the input actually has a unit cell / lattice).
     _supercell = tuple(args.supercell) if args.supercell is not None else (1, 1, 1)
@@ -769,9 +745,9 @@ def main() -> None:
                 ts_detect=needs_ts,
                 ts_frame=args.ts_frame,
                 nci_detect=args.nci_detect,
-                crystal=interface_mode or False,
                 cell=args.cell,
                 quick=args.bo is False,
+                bohr=True if args.bohr else None,
             )
         except ValueError as e:
             p.error(str(e))

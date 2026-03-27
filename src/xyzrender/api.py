@@ -163,9 +163,9 @@ def load(
     ts_detect: bool = False,
     ts_frame: int = 0,
     nci_detect: bool = False,
-    crystal: bool | str = False,
     cell: bool = False,
     quick: bool = False,
+    bohr: bool | None = None,
     # --- Ensemble (multi-frame trajectory) ---
     ensemble: bool = False,
     reference_frame: int = 0,
@@ -208,10 +208,6 @@ def load(
         Detect non-covalent interactions with xyzgraph after loading.
         When used with ``ensemble=True``, NCI detection is run on
         each frame independently.
-    crystal:
-        Load as a periodic crystal structure via phonopy.  Pass ``True``
-        to auto-detect the interface from the filename, or a string such
-        as ``"vasp"`` or ``"qe"`` to specify explicitly.
     cell:
         Read the periodic cell box from an extXYZ ``Lattice=`` header and
         store it on the returned :class:`Molecule`.
@@ -294,12 +290,6 @@ def load(
     elif not Path(mol_path).is_file():
         raise FileNotFoundError(f"[Errno 2] No such file or directory: '{mol_path}'")
 
-    elif crystal:
-        interface_mode = _resolve_crystal_interface(mol_path, crystal)
-        from xyzrender.crystal import load_crystal
-
-        graph, cell_data = load_crystal(mol_path, interface_mode)
-
     elif mol_path.suffix.lower() == ".cube":
         from xyzrender.readers import load_cube
 
@@ -333,6 +323,7 @@ def load(
             kekule=kekule,
             rebuild=rebuild,
             quick=quick,
+            bohr=bohr,
         )
 
     # Auto-promote: any file that carried lattice data (extXYZ Lattice=, PDB CRYST1, CIF)
@@ -644,7 +635,7 @@ def render(
     else:
         mol = load(molecule)
 
-    # Supercell requires lattice/cell_data (works for any periodic input, not just phonopy crystals)
+    # Supercell requires lattice/cell_data
     if supercell != (1, 1, 1) and mol.cell_data is None:
         raise ValueError("supercell requires an input with a unit cell (lattice).")
 
@@ -2145,21 +2136,6 @@ def _apply_cell_config(
     if bo_explicit:
         logger.warning("Bond orders are not supported for periodic structures (--bo ignored)")
     cfg.bond_orders = False
-
-
-def _resolve_crystal_interface(path: Path, crystal: bool | str) -> str:
-    """Resolve the phonopy interface mode from *crystal* param and file path."""
-    if isinstance(crystal, str) and crystal in {"vasp", "qe"}:
-        return crystal
-    # auto-detect from filename
-    stem = path.stem.upper()
-    ext = path.suffix.lower()
-    if ext == ".vasp" or stem in {"POSCAR", "CONTCAR"}:
-        return "vasp"
-    if ext == ".in":
-        return "qe"
-    msg = f"Cannot auto-detect crystal interface from {str(path)!r}. Specify explicitly: crystal='vasp' or crystal='qe'"
-    raise ValueError(msg)
 
 
 def _write_output(svg: str, output: Path, cfg: RenderConfig) -> None:
