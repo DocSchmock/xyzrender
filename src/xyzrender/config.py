@@ -86,12 +86,17 @@ def build_render_config(config_data: dict, cli_overrides: dict) -> RenderConfig:
     # style_regions can't be deserialised from plain JSON dicts
     merged.pop("style_regions", None)
 
+    # Extract preset-defined regions before RenderConfig (resolved at render time)
+    region_specs = merged.pop("regions", None)
+    if region_specs is not None:
+        merged["region_specs"] = region_specs
+
     # "colors" key in JSON maps to color_overrides on RenderConfig
     colors = merged.pop("colors", None)
     if colors:
         merged["color_overrides"] = {sym: resolve_color(c) for sym, c in colors.items()}
 
-    # Rename JSON surface keys → RenderConfig field names
+    # Rename JSON keys → RenderConfig field names
     for old, new in (
         ("mo_iso", "mo_isovalue"),
         ("mo_blur", "mo_blur_sigma"),
@@ -106,6 +111,7 @@ def build_render_config(config_data: dict, cli_overrides: dict) -> RenderConfig:
     _color_fields = (
         "background",
         "bond_color",
+        "bond_outline_color",
         "ts_color",
         "nci_color",
         "atom_stroke_color",
@@ -179,6 +185,8 @@ def build_config(
     bond_width=None,
     atom_stroke_width=None,
     bond_color=None,
+    bond_outline_color=None,
+    bond_outline_width=None,
     ts_color=None,
     nci_color=None,
     background=None,
@@ -258,6 +266,8 @@ def build_config(
         ("bond_width", bond_width),
         ("atom_stroke_width", atom_stroke_width),
         ("bond_color", bond_color),
+        ("bond_outline_color", bond_outline_color),
+        ("bond_outline_width", bond_outline_width),
         ("ts_color", ts_color),
         ("nci_color", nci_color),
         ("background", background),

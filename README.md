@@ -39,7 +39,7 @@ Most molecular visualisation tools require manual setup: loading files into a GU
 - **Crystal / periodic structures** — render periodic structures with unit cell box, ghost atoms, and crystallographic axis arrows (a/b/c); extXYZ `Lattice=` auto-detected; VASP/QE via [`phonopy`](https://github.com/phonopy/phonopy)
 - **Multiple output formats** — SVG (default), PNG, PDF, and GIF from the same command
 
-**Preconfigured but extensible.** Built-in presets (`default`, `flat`, `paton`, `skeletal`, `bubble`, `tube`, `wire`, `graph`) cover common use cases. Every setting — colors, radii, bond widths, gradients, fog — can be overridden via CLI flags or a custom JSON config file.
+**Preconfigured but extensible.** Built-in presets (`default`, `flat`, `paton`, `skeletal`, `bubble`, `tube`, `mtube`, `wire`, `graph`) cover common use cases. Every setting — colors, radii, bond widths, gradients, fog — can be overridden via CLI flags or a custom JSON config file.
 
 ```bash
 xyzrender caffeine.xyz                          # SVG with sensible defaults
@@ -120,11 +120,15 @@ For the full Python API (render options, `build_config()`, `measure()`, `load()`
 
 | Default | Flat | Paton (PyMOL-like) | Pmol | Skeletal |
 |---------|------|--------------------|------|----------|
-| ![default](examples/images/caffeine_default.svg) | ![flat](examples/images/caffeine_flat.svg) | ![paton](examples/images/caffeine_paton.svg) | ![pmol](examples/images/caffeine_pmol.svg) | ![skeletal](examples/images/caffeine_skeletal.svg) |
+| ![default](examples/images/caffeine_default.svg) | ![flat](examples/images/caffeine_flat.svg) | ![paton](examples/images/caffeine_paton.svg) | ![pmol](examples/images/caffeine_pmol.svg) | 
 
-| Bubble | Tube | Wire | Graph |
-|--------|------|------|-------|
-| ![bubble](examples/images/caffeine_bubble.svg) | ![tube](examples/images/caffeine_tube.svg) | ![wire](examples/images/caffeine_wire.svg) | ![graph](examples/images/caffeine_graph.svg) |
+| Skeletal | Bubble | Tube | Metal Tube | Wire | Graph |
+|--------|------|------------|------|-------|
+| ![skeletal](examples/images/caffeine_skeletal.svg) | ![bubble](examples/images/caffeine_bubble.svg) | ![tube](examples/images/caffeine_tube.svg) | 
+
+| Wire | Graph | MTube | MTube (metal) | 
+|--|--|--|
+| ![wire](examples/images/caffeine_wire.svg) | ![graph](examples/images/caffeine_graph.svg) | ![mtube](examples/images/caffeine_mtube.svg) | ![mtube](examples/images/mnh_mtube.svg) |
 
 ### Style regions
 

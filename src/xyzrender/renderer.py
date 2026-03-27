@@ -115,6 +115,10 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     ref_scale = (_REF_CANVAS - 2 * cfg.padding) / _REF_SPAN
     # Pad fit_radii by atom stroke overshoot so the bounding box accounts for it
     fit_radii = fit_radii + cfg.atom_stroke_width / (2 * ref_scale)
+    # Ensure fit_radii covers at least half the bond width (+ stroke) so thick
+    # bonds don't extend past the canvas when atom_scale is 0.
+    _min_bond_r = (cfg.bond_width + 2 * cfg.bond_outline_width) / (2 * ref_scale)
+    fit_radii = np.maximum(fit_radii, _min_bond_r)
     # Expand canvas for surface bounds (MO / density / ESP are mutually exclusive)
     extra_lo = extra_hi = None
     if cfg.mo_contours is not None:
@@ -687,6 +691,9 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
     # Deferred atom layers: draw all edges first, then place nodes on top for a
     # clean diagram-like aesthetic (enabled by atoms_above_bonds).
     _deferred_atom_layers: list[str] = []
+    # Bond edge stroke: a wider shadow line behind each bond, collected into a
+    # deferred layer inserted at the base of the molecule group.
+    _bond_outline_layer: list[str] = []
     _atoms_above = cfg.atoms_above_bonds if _acfg is None else any(c.atoms_above_bonds for c in _acfg)
 
     def _shaded_stroke(color_hex, lx1, ly1, lx2, ly2, w, lpx, lpy, shade_cfg):
@@ -731,7 +738,24 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
         )
 
     def _element_line(
-        lx1, ly1, lx2, ly2, w, ci_hex, cj_hex, ri, rj, lpx, lpy, *, fog_enabled, fi, fj, shade_cfg, op_attr, dash=""
+        lx1,
+        ly1,
+        lx2,
+        ly2,
+        w,
+        ci_hex,
+        cj_hex,
+        ri,
+        rj,
+        lpx,
+        lpy,
+        *,
+        fog_enabled,
+        fi,
+        fj,
+        shade_cfg,
+        op_attr,
+        dash="",
     ):
         """Emit a half-bond split line with element colouring.
 
@@ -765,6 +789,8 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
             _bw = min(_bw, 20.0 * scale_ratio)
         _gap = bcfg.bond_gap * _bw
         _bond_color = bcfg.bond_color
+        _stroke_color = bcfg.bond_outline_color
+        _stroke_width = bcfg.bond_outline_width * scale_ratio
         if style == BondStyle.DASHED and bcfg.ts_color is not None:
             _bond_color = bcfg.ts_color
         if style == BondStyle.DOTTED and bcfg.nci_color is not None:
@@ -834,6 +860,14 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
 
         op_attr = f' opacity="{opacity:.2f}"' if opacity < 1.0 else ""
 
+        # Collect edge stroke shadow into the deferred layer
+        if _stroke_color and _stroke_width > 0:
+            ow = _bw + 2 * _stroke_width
+            _bond_outline_layer.append(
+                f'  <line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+                f'stroke="{_stroke_color}" stroke-width="{ow:.1f}" stroke-linecap="round"{op_attr}/>'
+            )
+
         # Cylinder shading config — None when off, bcfg when on
         _scfg = bcfg if bcfg.bond_gradient else None
 
@@ -888,6 +922,7 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 ox, oy = px * ib * _gap, py * ib * _gap
                 _emit(x1 + ox, y1 + oy, x2 + ox, y2 + oy, w, _scfg)
 
+    _molecule_insert_idx = len(svg)
     for idx, ai in enumerate(z_order):
         # Flush all vectors whose origin depth <= this atom's depth.  The hidden
         # check is intentionally after the flush so hidden atoms still act as
@@ -1025,6 +1060,10 @@ def render_svg(graph, config: RenderConfig | None = None, *, _log: bool = True, 
                 if bond_op < 0.01:
                     continue  # skip invisible bonds
                 add_bond(ai, aj_int, bo, style, opacity=bond_op, color_override=color_ov)
+
+    # Insert edge stroke shadow layer at the base of the molecule group
+    if _bond_outline_layer:
+        svg[_molecule_insert_idx:_molecule_insert_idx] = _bond_outline_layer
 
     # NCI patches in front of all atoms (z_depth > frontmost atom)
     while nci_lobe_idx < len(nci_lobes_flat):
