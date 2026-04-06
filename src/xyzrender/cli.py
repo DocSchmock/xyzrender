@@ -309,12 +309,20 @@ def main() -> None:
         default=None,
         metavar="INDICES",
         help='Convex hull (no args = all heavy atoms; "rings" = per aromatic ring;'
+        ' "faces" = 2D structural faces colored by size (sheets);'
+        ' "pores" = 3D pore windows via coarse-grained net topology (MOFs);'
         ' or 1-indexed subsets e.g. "1-6" or "1-6 7-12")',
     )
     surf_g.add_argument(
         "--hull-color", nargs="+", default=None, help="Hull fill color(s) (hex or named, one per subset)"
     )
     surf_g.add_argument("--hull-opacity", type=float, default=None, help="Hull fill opacity (0-1)")
+    surf_g.add_argument(
+        "--hull-color-type",
+        choices=["type", "size", "env"],
+        default="type",
+        help="Ring colouring: 'type' = atom types + size, 'size' = size only, 'env' = type + ring fusion",
+    )
     surf_g.add_argument(
         "--hull-edge",
         action=argparse.BooleanOptionalAction,
@@ -327,6 +335,34 @@ def main() -> None:
         default=None,
         help="Hull edge stroke width as fraction of bond width (default: 0.4)",
     )
+    surf_g.add_argument(
+        "--ring-max-size",
+        type=int,
+        default=100,
+        dest="ring_max_size",
+        help="Max ring size for --hull faces/pore detection (default: 100)",
+    )
+    surf_g.add_argument(
+        "--ring-min-size",
+        type=int,
+        default=3,
+        dest="ring_min_size",
+        help="Min ring size for --hull faces/pore detection (default: 3)",
+    )
+    surf_g.add_argument(
+        "--face-planarity",
+        type=float,
+        default=0.25,
+        help="Planarity tolerance for 3D face detection (0=strict, 1=permissive, default: 0.25)",
+    )
+    surf_g.add_argument(
+        "--pore",
+        action="store_true",
+        default=False,
+        help="Detect pore cavities and draw inscribed sphere(s)",
+    )
+    surf_g.add_argument("--pore-color", default=None, help="Pore sphere color (default: yellow)")
+    surf_g.add_argument("--pore-opacity", type=float, default=None, help="Pore sphere opacity (default: 0.5)")
 
     # --- Overlay / ensemble ---
     ov_g = p.add_argument_group("overlay / ensemble")
@@ -614,8 +650,8 @@ def main() -> None:
     crystal_g.add_argument(
         "--axes",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Show/hide crystallographic axis arrows a/b/c",
+        default=None,
+        help="Show/hide crystallographic axis arrows a/b/c (default: on unless --no-cell)",
     )
     crystal_g.add_argument("--cell-color", default=None, help="Unit cell box color (hex or named, default: #333333)")
     crystal_g.add_argument("--cell-width", type=float, default=None, help="Unit cell box line width (default: 1.5)")
@@ -646,7 +682,9 @@ def main() -> None:
     args = p.parse_args()
 
     from_stdin = not args.input and not sys.stdin.isatty()
-    if not Path(args.input).is_file() and not args.smi and not from_stdin:
+    if not args.input and not args.smi and not from_stdin:
+        p.error("No input file provided. Pass a file path, --smi, or pipe via stdin.")
+    if args.input and not Path(args.input).is_file():
         p.error(f"No such file or directory: {args.input!r}")
 
     from xyzrender import configure_logging
@@ -658,7 +696,6 @@ def main() -> None:
         render_gif,
     )
     from xyzrender.config import build_config
-    from xyzrender.hull import apply_hull_to_config
     from xyzrender.readers import load_stdin
 
     configure_logging(verbose=True, debug=args.debug)
@@ -862,24 +899,25 @@ def main() -> None:
 
     _apply_style_regions(cfg, mol.graph, regions=args.region)
 
-    # Resolve hull now that mol is loaded (needs graph for ring detection / index conversion)
+    # Resolve hull argument string → type for render().
+    # Actual detection happens inside render() after crystal images / supercell.
+    _hull_arg: bool | str | list[int] | list[list[int]] | None = None
     if args.hull is not None:
-        if args.hull == ["rings"]:
-            _hull_arg: bool | str | list[int] | list[list[int]] = "rings"
+        if args.hull in (["rings"], ["ring"]):
+            _hull_arg = "rings"
+        elif args.hull in (["faces"], ["face"]):
+            _hull_arg = "faces"
         elif not args.hull:
-            # --hull with no args → all heavy atoms
             _hull_arg = True
         else:
+            # Must be numeric atom indices — validate before parsing.
+            _valid_modes = ("rings", "ring", "faces", "face")
+            for g in args.hull:
+                if g in _valid_modes:
+                    p.error(f"--hull {g}: did you mean '--hull {g}'? (no other arguments alongside mode names)")
+                if not any(c.isdigit() for c in g):
+                    p.error(f"--hull {g!r}: expected 'faces', 'rings', or atom indices (e.g. '1-6 7-12')")
             _hull_arg = [parse_atom_indices(g, one_indexed=True) for g in args.hull]
-        apply_hull_to_config(
-            cfg,
-            _hull_arg,
-            hull_color=args.hull_color,
-            hull_opacity=args.hull_opacity,
-            hull_edge=args.hull_edge,
-            hull_edge_width_ratio=args.hull_edge_width_ratio,
-            graph=mol.graph,
-        )
 
     # Pre-load overlay once so render() + render_gif() don't each load it from disk.
     if args.overlay and isinstance(args.overlay, str):
@@ -1049,6 +1087,18 @@ def main() -> None:
             align_atoms=_align_atoms,
             vector=args.vector,
             vector_scale=args.vector_scale,
+            hull=_hull_arg,
+            hull_color=args.hull_color,
+            hull_opacity=args.hull_opacity,
+            hull_edge=args.hull_edge,
+            hull_edge_width_ratio=args.hull_edge_width_ratio,
+            hull_color_type=args.hull_color_type,
+            pore=args.pore,
+            ring_max_size=args.ring_max_size,
+            ring_min_size=args.ring_min_size,
+            face_planarity=args.face_planarity,
+            pore_color=args.pore_color,
+            pore_opacity=args.pore_opacity,
             bo=args.bo,
             output=args.output,
             ref=args.ref,
@@ -1122,6 +1172,18 @@ def main() -> None:
                 vector=args.vector,
                 vector_scale=args.vector_scale,
                 ref=args.ref,
+                hull=_hull_arg,
+                hull_color=args.hull_color,
+                hull_opacity=args.hull_opacity,
+                hull_edge=args.hull_edge,
+                hull_edge_width_ratio=args.hull_edge_width_ratio,
+                hull_color_type=args.hull_color_type,
+                pore=args.pore,
+                ring_max_size=args.ring_max_size,
+                ring_min_size=args.ring_min_size,
+                face_planarity=args.face_planarity,
+                pore_color=args.pore_color,
+                pore_opacity=args.pore_opacity,
             )
         except ValueError as e:
             p.error(str(e))
