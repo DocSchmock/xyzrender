@@ -123,7 +123,7 @@ For the full Python API (render options, `build_config()`, `measure()`, `load()`
 |--------|------|------------|
 | ![skeletal](examples/images/caffeine_skeletal.svg) | ![bubble](examples/images/caffeine_bubble.svg) | ![tube](examples/images/caffeine_tube.svg) | 
 
-| Wire | Graph | MTube | MTube (metal) | 
+| Wire | Graph | MTube | MTube (metal) + `unbond pi` | 
 |--|--|--|--|
 | ![wire](examples/images/caffeine_wire.svg) | ![graph](examples/images/caffeine_graph.svg) | ![mtube](examples/images/caffeine_mtube.svg) | ![mtube](examples/images/mnh_mtube.svg) |
 
