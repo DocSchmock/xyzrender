@@ -29,8 +29,8 @@ NCI surface example structures from [NCIPlot](https://github.com/juliacontrerasg
 - [Ksenia Briling (@briling)](https://github.com/briling) — `vmol` integration and the [xyz2svg](https://github.com/briling/xyz2svg) foundation
 - [Sander Cohen-Janes (@scohenjanes5)](https://github.com/scohenjanes5) — crystal/periodic structure support (VASP, Quantum ESPRESSO, ghost atoms, crystallographic axes), vector annotations and gif parallelisation, gaussian input parsing
 - [Rubén Laplaza (@rlaplaza)](https://github.com/rlaplaza) — convex hull facets
-- [Iñigo Iribarren Aguirre (@iribirii)](https://github.com/iribirii) — radial gradients respecting colour space (pseudo-3D), skeletal rendering, ensemble display, supercell projection, metal tube preset
-- [James O'Brien (@JamesOBrien2)](https://github.com/JamesOBrien2) — stereochemistry detection and integration, nci/ts colour control, graph styling, pmol styling
+- [Iñigo Iribarren Aguirre (@iribirii)](https://github.com/iribirii) — logo design, radial gradients respecting colour space (pseudo-3D), skeletal rendering, ensemble display, supercell projection, metal tube preset
+- [James O'Brien (@JamesOBrien2)](https://github.com/JamesOBrien2) — stereochemistry detection and integration, nci/ts colour control, graph styling, pmol styling, colour palette extension
 - [Vinicius Port (@caprilesport)](https://github.com/caprilesport) — `v` binary path discovery
 - [Lucas Attia (@lucasattia)](https://github.com/lucasattia) — transparent background
 
