@@ -2275,32 +2275,42 @@ def _combine_vector_sources(
 
 
 def _apply_ref_orientation(rmol: Molecule, ref_path: Path, cfg: "RenderConfig") -> None:
-    """Kabsch-align *rmol* onto a saved reference XYZ.  Force-disables auto_orient."""
+    """Kabsch-align *rmol* onto a saved reference XYZ.  Force-disables auto_orient.
+
+    Centroid-dummy nodes (``symbol == "*"``, e.g. π-centroids added by
+    ``--nci-detect``) are co-rotated by the same rigid transform so they
+    track the real atoms.
+    """
     if rmol.cell_data is not None:
         msg = "--ref is not supported for periodic structures"
         raise ValueError(msg)
 
     ref_mol = load(ref_path, quick=True)
 
-    # Non-ghost atoms only
+    # Reference XYZ is real-only (to_xyz strips *).  Mobile graph may contain
+    # * dummies — load all nodes and fit on real atoms only, but apply the
+    # transform to every node so dummies stay locked to the structure.
     ref_nodes = [n for n in ref_mol.graph.nodes() if ref_mol.graph.nodes[n]["symbol"] != "*"]
-    mol_nodes = [n for n in rmol.graph.nodes() if rmol.graph.nodes[n]["symbol"] != "*"]
+    all_nodes = list(rmol.graph.nodes())
+    real_local = [k for k, n in enumerate(all_nodes) if rmol.graph.nodes[n]["symbol"] != "*"]
+    mol_nodes = [all_nodes[k] for k in real_local]
 
     ref_pos = np.array([ref_mol.graph.nodes[n]["position"] for n in ref_nodes], dtype=float)
-    mol_pos = np.array([rmol.graph.nodes[n]["position"] for n in mol_nodes], dtype=float)
+    all_pos = np.array([rmol.graph.nodes[n]["position"] for n in all_nodes], dtype=float)
 
-    from xyzrender.utils import kabsch_align
+    from xyzrender.utils import mcs_kabsch_align
 
-    # Fast path: same atom count and element sequence
+    # Fast path: same atom count and element sequence between real-atom subsets.
+    # mcs_kabsch_align fits on the matched subset and applies the transform to
+    # all of *all_pos*, which is exactly what we need to co-rotate the dummies.
     if len(ref_nodes) == len(mol_nodes) and all(
         ref_mol.graph.nodes[r]["symbol"] == rmol.graph.nodes[m]["symbol"]
         for r, m in zip(ref_nodes, mol_nodes, strict=True)
     ):
-        aligned = kabsch_align(ref_pos, mol_pos)
+        aligned = mcs_kabsch_align(ref_pos, all_pos, list(range(len(ref_nodes))), real_local)
     else:
         # Different molecules — MCS alignment
         from xyzrender.mcs import find_mcs_mapping
-        from xyzrender.utils import mcs_kabsch_align
 
         mapping = find_mcs_mapping(ref_mol.graph, rmol.graph)
         if mapping is None:
@@ -2319,10 +2329,10 @@ def _apply_ref_orientation(rmol: Molecule, ref_path: Path, cfg: "RenderConfig") 
                 matched_frac * 100,
             )
         g1_idx = [ref_nodes.index(n) for n in g1_ids]
-        g2_idx = [mol_nodes.index(n) for n in g2_ids]
-        aligned = mcs_kabsch_align(ref_pos, mol_pos, g1_idx, g2_idx)
+        g2_idx = [all_nodes.index(n) for n in g2_ids]
+        aligned = mcs_kabsch_align(ref_pos, all_pos, g1_idx, g2_idx)
 
-    for k, nid in enumerate(mol_nodes):
+    for k, nid in enumerate(all_nodes):
         rmol.graph.nodes[nid]["position"] = tuple(float(v) for v in aligned[k])
 
     # Reference IS the orientation — --orient ignored
